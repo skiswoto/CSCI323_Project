@@ -1,0 +1,52 @@
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 1: Load Dataset (Road Network)                         │
+│                                                             │
+│  Input:  USA-road-d.NY.gr (distance graph)                  │
+│          USA-road-t.NY.gr (time graph)                      │
+│          USA-road-d.NY.co (coordinates)                     │
+│                                                             │
+│  Output: NetworkX graph with 264K nodes, 730K edges         │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 2: Generate Test Queries (Routing Questions)          │
+│                                                             │
+│  Process:                                                   │
+│  1. Pick random node pairs from graph                      │
+│  2. Calculate geographic distance between them             │
+│  3. Classify into buckets:                                 │
+│     • Short (0-5 km): 50 queries                          │
+│     • Medium (5-50 km): 50 queries                        │
+│     • Long (>50 km): 50 queries                           │
+│                                                             │
+│  Output: queries.csv (150 source→target pairs)            │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 3: Run Benchmark (Test Algorithm Performance)         │
+│                                                             │
+│  For each objective (distance, time):                      │
+│    For each query (150 queries):                           │
+│      1. Start timer & memory tracker                       │
+│      2. Run Dijkstra(source, target)                       │
+│      3. Record:                                            │
+│         • Runtime (seconds)                                │
+│         • Peak memory (MB)                                 │
+│         • Nodes expanded (count)                           │
+│         • Path cost (total weight)                         │
+│      4. Stop timer & memory tracker                        │
+│                                                             │
+│  Output: dijkstra_results.csv (300 rows: 150×2 objectives)│
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│ STEP 4: Visualize & Analyze Results                        │
+│                                                             │
+│  Create charts showing:                                     │
+│  • How performance scales with query distance              │
+│  • Comparison between distance vs time objectives          │
+│  • Distribution of metrics across queries                  │
+│  • Relationship between time, memory, and efficiency       │
+│                                                             │
+│  Output: dijkstra_performance.png (6 charts)              │
+└─────────────────────────────────────────────────────────────┘

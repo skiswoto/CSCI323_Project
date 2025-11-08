@@ -50,7 +50,7 @@ def astar_heuristic_factory(G, coords, target, objective='distance'):
                 return 0
             lat, lon = coords[node]
             dist = haversine_distance(lat, lon, target_lat, target_lon)
-            return dist / max_speed_ms  # Convert to time estimate
+            return (dist / max_speed_ms) * 100  # Convert to time estimate
     
     return h
 

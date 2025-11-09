@@ -214,31 +214,36 @@ def plot_k_shortest_performance(df, output_dir='plots'):
                  fontsize=14, fontweight='bold')
     ax.legend(fontsize=11)
     ax.grid(True, alpha=0.3)
-    ax.set_xticks(k_values)
-    ax.set_yscale('log')  # Log scale to see trends better
+    ax.set_yscale('log')
     
-    # Plot 2: Comparison at LARGEST K (K=10, 15, or 20)
+    # Plot 2: Algorithm comparison at highest K
     ax = axes[1]
-    largest_k = max(k_values)
-    k_large_data = k_shortest[k_shortest['K'] == largest_k]
+    max_k = max(k_values)
+    algs = ['Yens', 'PSB', 'SB']
+    means_at_max_k = []
     
-    algorithms = ['Yens', 'PSB', 'SB']
-    runtimes = [k_large_data[k_large_data['algorithm'] == alg]['runtime_sec'].mean() 
-                for alg in algorithms]
+    for alg in algs:
+        data = k_shortest[(k_shortest['algorithm'] == alg) & 
+                         (k_shortest['K'] == max_k)]
+        if len(data) > 0:
+            means_at_max_k.append(data['runtime_sec'].mean())
+        else:
+            means_at_max_k.append(0)
     
-    bars = ax.bar(algorithms, runtimes, 
-                  color=[colors.get(alg) for alg in algorithms],
+    bars = ax.bar(algs, means_at_max_k, 
+                  color=['#3498db', '#2ecc71', '#e74c3c'], 
                   alpha=0.7, edgecolor='black', linewidth=1.5)
     
-    for bar, runtime in zip(bars, runtimes):
+    # Add value labels
+    for bar, mean in zip(bars, means_at_max_k):
         height = bar.get_height()
         ax.text(bar.get_x() + bar.get_width()/2., height,
-                f'{runtime:.3f}s',
+                f'{mean:.3f}s',
                 ha='center', va='bottom', fontweight='bold', fontsize=11)
     
-    ax.set_xlabel('Algorithm', fontsize=12, fontweight='bold')
     ax.set_ylabel('Average Runtime (seconds)', fontsize=12, fontweight='bold')
-    ax.set_title(f'K-Shortest Algorithm Comparison at K={largest_k}', 
+    ax.set_xlabel('Algorithm', fontsize=12, fontweight='bold')
+    ax.set_title(f'K-Shortest Algorithm Comparison at K={max_k}', 
                  fontsize=14, fontweight='bold')
     ax.grid(True, alpha=0.3, axis='y')
     
@@ -251,58 +256,57 @@ def plot_k_shortest_performance(df, output_dir='plots'):
 
 def plot_single_vs_k_shortest(df, output_dir='plots'):
     """
-    Chart 4: Single-path vs K-shortest path comparison
-    Shows cost of finding alternatives
+    Chart 4: Cost of finding alternative routes
+    Shows the dramatic increase in runtime for K-shortest
     """
-    short_queries = df[(df['bucket'] == 'short') & 
-                       (df['objective'] == 'distance')]
+    short_data = df[(df['bucket'] == 'short') & 
+                    (df['objective'] == 'distance')]
     
-    if len(short_queries) == 0:
+    if len(short_data) == 0:
         print("⚠️  No short query data found")
         return
     
     fig, ax = plt.subplots(figsize=(10, 6))
     
-    # Get actual K values from data
-    k_shortest_data = short_queries[short_queries['algorithm'] == 'Yens']
-    k_values_in_data = sorted(k_shortest_data['K'].unique())
+    # Get baseline (K=1) from A*
+    baseline_data = short_data[short_data['algorithm'] == 'A*']
+    baseline_time = baseline_data['runtime_sec'].mean()
     
-    # Build K=1 baseline + actual K values
-    k_values = [1] + k_values_in_data
+    # Get K-shortest data (using Yens as representative)
+    k_shortest_data = short_data[short_data['algorithm'] == 'Yens']
+    k_values = sorted(k_shortest_data['K'].unique())
     
-    # Dijkstra K=1
-    dijkstra_time = short_queries[short_queries['algorithm'] == 'Dijkstra']['runtime_sec'].mean()
+    k_means = []
+    k_factors = []
+    for k in k_values:
+        data = k_shortest_data[k_shortest_data['K'] == k]
+        if len(data) > 0:
+            mean_time = data['runtime_sec'].mean()
+            k_means.append(mean_time)
+            k_factors.append(mean_time / baseline_time if baseline_time > 0 else 1)
     
-    # Yen's for each K
-    yen_times = [dijkstra_time]  # K=1
-    for k in k_values_in_data:
-        k_data = short_queries[(short_queries['algorithm'] == 'Yens') & 
-                              (short_queries['K'] == k)]
-        yen_times.append(k_data['runtime_sec'].mean() if len(k_data) > 0 else 0)
-    
-    # Plot
-    ax.plot(k_values, yen_times, marker='o', linewidth=3, 
+    # Plot K-shortest performance
+    ax.plot(k_values, k_means, marker='o', linewidth=3, 
             markersize=10, color='#e74c3c', label='K-Shortest Paths')
-    ax.axhline(y=dijkstra_time, color='#3498db', linestyle='--', 
-               linewidth=2, label='Single Path Baseline (K=1)')
     
-    # Annotations - only for selected K values to avoid clutter
-    annotation_ks = [1] + [k for k in k_values_in_data if k in [3, 10, 20]]
-    for k, time in zip(k_values, yen_times):
-        if k in annotation_ks and time > 0:
-            slowdown = time / dijkstra_time
-            ax.annotate(f'{slowdown:.1f}x',
-                       xy=(k, time), xytext=(k, time * 1.15),
-                       ha='center', fontweight='bold', fontsize=10,
-                       bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7))
+    # Add baseline
+    ax.axhline(y=baseline_time, linestyle='--', linewidth=2,
+               color='#3498db', label='Single Path Baseline (K=1)')
+    
+    # Add slowdown factor labels
+    for k, mean, factor in zip(k_values, k_means, k_factors):
+        ax.annotate(f'{factor:.1f}x',
+                   xy=(k, mean), xytext=(10, 10),
+                   textcoords='offset points',
+                   fontsize=10, fontweight='bold',
+                   bbox=dict(boxstyle='round,pad=0.5', facecolor='yellow', alpha=0.7))
     
     ax.set_xlabel('K (Number of Paths)', fontsize=12, fontweight='bold')
     ax.set_ylabel('Average Runtime (seconds)', fontsize=12, fontweight='bold')
     ax.set_title('Cost of Finding Alternative Routes (Short Queries)', 
                  fontsize=14, fontweight='bold')
-    ax.legend(fontsize=11, loc='upper left')
+    ax.legend(fontsize=11)
     ax.grid(True, alpha=0.3)
-    ax.set_xticks(k_values)
     ax.set_yscale('log')
     
     plt.tight_layout()
@@ -315,6 +319,7 @@ def plot_single_vs_k_shortest(df, output_dir='plots'):
 def plot_memory_usage(df, output_dir='plots'):
     """
     Chart 5: Memory usage comparison
+    Separated into single-path algorithms and K-shortest algorithms
     """
     memory_data = df[(df['objective'] == 'distance') & 
                      (df['peak_memory_mb'] > 0)]
@@ -323,29 +328,56 @@ def plot_memory_usage(df, output_dir='plots'):
         print("⚠️  No memory data found")
         return
     
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     
-    # Prepare data for boxplot
-    algorithms = ['Dijkstra', 'A*', 'Yens\n(K=3)', 'PSB\n(K=3)', 'SB\n(K=3)']
-    data_to_plot = []
+    # Plot 1: Single-path algorithms (ALL queries)
+    ax = axes[0]
+    single_path_data = []
+    single_path_labels = ['Dijkstra', 'A*']
     
-    for alg, k in [('Dijkstra', 1), ('A*', 1), ('Yens', 3), ('PSB', 3), ('SB', 3)]:
-        alg_data = memory_data[(memory_data['algorithm'] == alg) & 
-                              (memory_data['K'] == k)]
+    for alg in ['Dijkstra', 'A*']:
+        alg_data = memory_data[memory_data['algorithm'] == alg]
         if len(alg_data) > 0:
-            data_to_plot.append(alg_data['peak_memory_mb'].values)
+            single_path_data.append(alg_data['peak_memory_mb'].values)
         else:
-            data_to_plot.append([0])
+            single_path_data.append([0])
     
-    bp = ax.boxplot(data_to_plot, labels=algorithms, patch_artist=True)
+    bp1 = ax.boxplot(single_path_data, labels=single_path_labels, patch_artist=True)
     
-    colors = ['#3498db', '#2ecc71', '#e74c3c', '#f39c12', '#9b59b6']
-    for patch, color in zip(bp['boxes'], colors):
+    colors_single = ['#3498db', '#2ecc71']
+    for patch, color in zip(bp1['boxes'], colors_single):
         patch.set_facecolor(color)
         patch.set_alpha(0.7)
     
     ax.set_ylabel('Peak Memory Usage (MB)', fontsize=12, fontweight='bold')
-    ax.set_title('Memory Usage Comparison', fontsize=14, fontweight='bold')
+    ax.set_title('Single-Path Algorithms\n(All Query Distances)', 
+                 fontsize=13, fontweight='bold')
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    # Plot 2: K-shortest algorithms (SHORT queries only)
+    ax = axes[1]
+    k_shortest_data = []
+    k_shortest_labels = ['Yens\n(K=3)', 'PSB\n(K=3)', 'SB\n(K=3)']
+    
+    for alg in ['Yens', 'PSB', 'SB']:
+        alg_data = memory_data[(memory_data['algorithm'] == alg) & 
+                              (memory_data['K'] == 3) &
+                              (memory_data['bucket'] == 'short')]
+        if len(alg_data) > 0:
+            k_shortest_data.append(alg_data['peak_memory_mb'].values)
+        else:
+            k_shortest_data.append([0])
+    
+    bp2 = ax.boxplot(k_shortest_data, labels=k_shortest_labels, patch_artist=True)
+    
+    colors_k = ['#e74c3c', '#f39c12', '#9b59b6']
+    for patch, color in zip(bp2['boxes'], colors_k):
+        patch.set_facecolor(color)
+        patch.set_alpha(0.7)
+    
+    ax.set_ylabel('Peak Memory Usage (MB)', fontsize=12, fontweight='bold')
+    ax.set_title('K-Shortest Path Algorithms\n(Short Queries Only)', 
+                 fontsize=13, fontweight='bold')
     ax.grid(True, alpha=0.3, axis='y')
     
     plt.tight_layout()
@@ -358,26 +390,27 @@ def plot_memory_usage(df, output_dir='plots'):
 def plot_scalability_comparison(df, output_dir='plots'):
     """
     Chart 6: Scalability comparison - LINEAR vs ACTUAL growth
-    Shows whether algorithms scale linearly with K
+    Shows whether K-shortest scales sub-linearly or super-linearly
     """
-    short_data = df[(df['bucket'] == 'short') & 
+    k_shortest = df[(df['algorithm'] == 'Yens') & 
                     (df['objective'] == 'distance') &
-                    (df['algorithm'] == 'Yens')]
+                    (df['bucket'] == 'short')]
     
-    if len(short_data) == 0:
-        print("⚠️  No Yen's data found for scalability analysis")
+    if len(k_shortest) == 0:
+        print("⚠️  No K-shortest data for scalability analysis")
         return
     
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    
-    # Get K values and runtimes
-    k_values = sorted(short_data['K'].unique())
-    runtimes = [short_data[short_data['K'] == k]['runtime_sec'].mean() 
-                for k in k_values]
+    k_values = sorted(k_shortest['K'].unique())
     
     if len(k_values) < 2:
         print("⚠️  Need at least 2 K values for scalability analysis")
         return
+    
+    # Calculate mean runtimes
+    runtimes = [k_shortest[k_shortest['K'] == k]['runtime_sec'].mean() 
+                for k in k_values]
+    
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     
     # Plot 1: Actual vs Linear scaling
     ax = axes[0]
@@ -448,7 +481,7 @@ def plot_scalability_comparison(df, output_dir='plots'):
 
 def plot_runtime_distribution(df, output_dir='plots'):
     """
-    Chart 6: Runtime distribution box plots
+    Chart 7: Runtime distribution box plots
     Shows variance in performance
     """
     short_data = df[(df['bucket'] == 'short') & 
@@ -603,7 +636,7 @@ def main():
     plot_k_shortest_performance(df, output_dir)
     plot_single_vs_k_shortest(df, output_dir)
     plot_memory_usage(df, output_dir)
-    plot_scalability_comparison(df, output_dir)  # NEW
+    plot_scalability_comparison(df, output_dir)
     plot_runtime_distribution(df, output_dir)
     
     # Generate summary table
@@ -618,8 +651,8 @@ def main():
     print("  2. 2_nodes_expanded_comparison.png - A* efficiency")
     print("  3. 3_k_shortest_performance.png - K-shortest scaling")
     print("  4. 4_single_vs_k_shortest.png - Cost of alternatives")
-    print("  5. 5_memory_usage.png - Memory comparison")
-    print("  6. 6_scalability_analysis.png - Scaling efficiency (NEW)")
+    print("  5. 5_memory_usage.png - Memory comparison (separated)")
+    print("  6. 6_scalability_analysis.png - Scaling efficiency")
     print("  7. 7_runtime_distribution.png - Performance variance")
     print("\nUse these charts in your report!")
 
